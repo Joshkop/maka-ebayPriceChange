@@ -3,11 +3,51 @@ import sys
 import json
 import atexit
 
+
 def save_mappings(measurement_mappings):
     with open("measurement_mappings.json", "w") as f:
         json.dump(measurement_mappings, f)
     print("Measurement mappings saved to file.")
-def main(input_file, new_prices_file, output_file):
+
+
+def interpolate_price(sku, new_prices, measurement_mappings):
+    parts = sku.split('-')
+    pieces = int(parts[1])
+    color = parts[2]
+    measurements = parts[3] + '-' + parts[4]
+
+    if measurements in measurement_mappings:
+        mapped_measurements = measurement_mappings[measurements]
+    else:
+        mapped_measurements = measurements
+
+    if color == "NAT":
+        new_color = "SCH"
+    elif color != "SCH":
+        new_color = "BRA"
+    else:
+        new_color = color
+
+    # Find the SKUs with 200 and 500 pieces
+    sku_200 = f"{parts[0]}-200-{new_color}-{mapped_measurements}"
+    sku_500 = f"{parts[0]}-500-{new_color}-{mapped_measurements}"
+
+    # Get the prices for 200 and 500 pieces
+    price_200 = new_prices.get(sku_200)
+    price_500 = new_prices.get(sku_500)
+
+    if price_200 is not None and price_500 is not None:
+        # Calculate the interpolated price
+        price_diff = price_500 - price_200
+        price_per_piece_diff = price_diff / (500 - 200)
+        interpolated_price = price_200 + (price_per_piece_diff * (pieces - 200))
+        return interpolated_price
+
+    return None
+
+
+
+def main(input_file, new_prices_file, output_file, price_adjustment):
     # Load initial measurement mappings from file
     try:
         with open("measurement_mappings.json", "r") as f:
@@ -41,6 +81,8 @@ def main(input_file, new_prices_file, output_file):
             parts = sku.split('-')
             pieces = parts[1]
             color = parts[2]
+            if len(parts) != 5:
+                continue
             measurements = parts[3] + '-' + parts[4]
 
             if color == "NAT":
@@ -50,9 +92,17 @@ def main(input_file, new_prices_file, output_file):
             else:
                 new_color = color
             try:
-                if int(pieces) < 100 or pieces == "300" or pieces == "400":
+                if int(pieces) < 100:
                     error_log.append(sku)
                     continue
+                elif pieces == "300" or pieces == "400":
+                    interpolated_price = interpolate_price(sku, new_prices, measurement_mappings)
+                    if interpolated_price is not None:
+                        row[idx_start_price] = str(round(interpolated_price - price_adjustment, 2))
+                        continue
+                    else:
+                        error_log.append(sku)
+                        continue
             except ValueError as e:
                 print(e)
                 error_log.append(sku)
@@ -63,15 +113,15 @@ def main(input_file, new_prices_file, output_file):
             new_sku = f"KBS-{pieces}-{new_color}-{measurements}"
 
             if new_sku in new_prices:
-                row[idx_start_price] = str(new_prices[new_sku])
+                row[idx_start_price] = str(round(new_prices[new_sku] - price_adjustment,2))
             elif sku in new_prices:
-                row[idx_start_price] = str(new_prices[sku])
+                row[idx_start_price] = str(round(new_prices[sku] - price_adjustment,2))
             else:
                 if measurements in measurement_mappings:
                     mapped_measurements = measurement_mappings[measurements]
                     mapped_sku = f"KBS-{pieces}-{new_color}-{mapped_measurements}"
                     if mapped_sku in new_prices:
-                        row[idx_start_price] = str(new_prices[mapped_sku])
+                        row[idx_start_price] = str(round(new_prices[mapped_sku] - price_adjustment,2))
                     else:
                         error_log.append(sku)
                 else:
@@ -84,7 +134,7 @@ def main(input_file, new_prices_file, output_file):
                         else:
                             mapped_sku = f"KBS-{pieces}-{new_color}-{action}"
                             if mapped_sku in new_prices:
-                                row[idx_start_price] = str(new_prices[mapped_sku])
+                                row[idx_start_price] = str(round(new_prices[mapped_sku] - price_adjustment,2))
                                 measurement_mappings[measurements] = action
                                 break
                             else:
@@ -98,7 +148,7 @@ def main(input_file, new_prices_file, output_file):
             f.write(';'.join(row) + '\n')
 
     # Write error log
-    with open("error_log.txt", 'w') as f:
+    with open("maka_error_log.txt", 'w') as f:
         f.write("SKUs not found in new prices file:\n")
         for sku in error_log:
             f.write(sku + '\n')
@@ -107,7 +157,7 @@ def main(input_file, new_prices_file, output_file):
     with open("measurement_mappings.json", "w") as f:
         json.dump(measurement_mappings, f)
 
-    print("Processing completed. Check the output file and error_log.txt for results.")
+    print("Processing completed. Check the output file and maka_error_log.txt for results.")
 
 
 if __name__ == "__main__":
@@ -115,4 +165,4 @@ if __name__ == "__main__":
     if len(sys.argv) != 4:
         print("Usage: python script.py <input_file.csv> <new_prices_file.csv> <output_file.csv>")
     else:
-        main(sys.argv[1], sys.argv[2], sys.argv[3])
+        main(sys.argv[1], sys.argv[2], sys.argv[3], 0.15)
