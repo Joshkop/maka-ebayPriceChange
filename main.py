@@ -60,8 +60,10 @@ def main(input_file, new_prices_file, output_file, price_adjustment):
     with open(new_prices_file, 'r') as f:
         reader = csv.DictReader(f, delimiter=',')
         for row in reader:
-            new_prices[row['SKU']] = float(row['Price'])
-
+            try:
+                new_prices[row['SKU']] = float(row['Price'])
+            except ValueError as e:
+                print("Skipped empty line")
     # Process input_file
     with open(input_file, 'r') as f:
         lines = f.readlines()
@@ -125,20 +127,21 @@ def main(input_file, new_prices_file, output_file, price_adjustment):
                     else:
                         error_log.append(sku)
                 else:
-                    while True:
-                        print(f"SKU {sku} not found in new prices file.")
-                        action = input("Enter new measurements (e.g., 300-48) or type 'skip': ").strip()
-                        if action.lower() == "skip":
-                            error_log.append(sku)
-                            break
-                        else:
-                            mapped_sku = f"KBS-{pieces}-{new_color}-{action}"
-                            if mapped_sku in new_prices:
-                                row[idx_start_price] = str(round(new_prices[mapped_sku] - price_adjustment,2))
-                                measurement_mappings[measurements] = action
-                                break
-                            else:
-                                print("Invalid measurements. Try again.")
+                    continue
+                    # while True:
+                    #     print(f"SKU {sku} not found in new prices file.")
+                    #     action = input("Enter new measurements (e.g., 300-48) or type 'skip': ").strip()
+                    #     if action.lower() == "skip":
+                    #         error_log.append(sku)
+                    #         break
+                    #     else:
+                    #         mapped_sku = f"KBS-{pieces}-{new_color}-{action}"
+                    #         if mapped_sku in new_prices:
+                    #             row[idx_start_price] = str(round(new_prices[mapped_sku] - price_adjustment,2))
+                    #             measurement_mappings[measurements] = action
+                    #             break
+                    #         else:
+                    #             print("Invalid measurements. Try again.")
 
     # Write output file
     with open(output_file, 'w') as f:
